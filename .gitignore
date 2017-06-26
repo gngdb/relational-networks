@@ -73,3 +73,6 @@ notebooks
 
 # ignore eggs
 .eggs
+
+# ignore saved models
+model
