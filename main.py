@@ -5,7 +5,10 @@ Code is based on pytorch/examples/mnist (https://github.com/pytorch/examples/tre
 from __future__ import print_function
 import argparse
 import os
-import cPickle as pickle
+try:
+    import cPickle as pickle
+except ImportError:
+    import pickle
 import random
 import numpy as np
 
@@ -40,7 +43,7 @@ if args.cuda:
     torch.cuda.manual_seed(args.seed)
 
 model = model.RN(args)
-model_dirs = './model'
+model_dirs = os.path.join(os.environ['SO_CLEVR_DIR'],'model')
 bs = args.batch_size
 input_img = torch.FloatTensor(bs, 3, 75, 75)
 input_qst = torch.FloatTensor(bs, 11)
@@ -86,7 +89,7 @@ def train(epoch, rel, norel):
     rel = cvt_data_axis(rel)
     norel = cvt_data_axis(norel)
 
-    for batch_idx in range(len(rel[0]) / bs):
+    for batch_idx in range(int(len(rel[0]) / bs)):
         tensor_data(rel, batch_idx)
         accuracy_rel = model.train_(input_img, input_qst, label)
 
@@ -109,7 +112,7 @@ def test(epoch, rel, norel):
 
     accuracy_rels = []
     accuracy_norels = []
-    for batch_idx in range(len(rel[0]) / bs):
+    for batch_idx in range(int(len(rel[0]) / bs)):
         tensor_data(rel, batch_idx)
         accuracy_rels.append(model.test_(input_img, input_qst, label))
 
@@ -124,10 +127,10 @@ def test(epoch, rel, norel):
     
 def load_data():
     print('loading data...')
-    dirs = './data'
+    dirs = os.environ['SO_CLEVR_DIR']
     filename = os.path.join(dirs,'sort-of-clevr.pickle')
-    f = open(filename, 'r')
-    train_datasets, test_datasets = pickle.load(f)
+    with open(filename, 'rb') as f:
+        train_datasets, test_datasets = pickle.load(f)
     rel_train = []
     rel_test = []
     norel_train = []
@@ -166,7 +169,11 @@ if args.resume:
         model.load_state_dict(checkpoint)
         print('==> loaded checkpoint {}'.format(filename))
 
+from time import time
 for epoch in range(1, args.epochs + 1):
+    start_time = time()
+    print("1 epoch took %.3f"%((time()-start_time)/60.))
     train(epoch, rel_train, norel_train)
+    print("1 epoch took %.3f"%((time()-start_time)/60.))
     test(epoch, rel_test, norel_test)
     model.save_model(epoch)

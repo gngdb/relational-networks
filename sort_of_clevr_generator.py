@@ -2,7 +2,10 @@ import cv2
 import os
 import numpy as np
 import random
-import cPickle as pickle
+try:
+    import cPickle as pickle
+except ImportError:
+    import pickle
 
 train_size = 9800
 test_size = 200
@@ -12,7 +15,7 @@ question_size = 11 ##6 for one-hot vector of color, 2 for question type, 3 for q
 """Answer : [yes, no, rectangle, circle, r, g, b, o, k, y]"""
 
 nb_questions = 10
-dirs = './data'
+dirs = os.environ['SO_CLEVR_DIR']
 
 colors = [
     (0,0,255),##r
@@ -156,7 +159,6 @@ train_datasets = [build_dataset() for _ in range(train_size)]
 
 print('saving datasets...')
 filename = os.path.join(dirs,'sort-of-clevr.pickle')
-f = open(filename, 'w')
-pickle.dump((train_datasets,test_datasets), f)
-f.close()
+with open(filename, 'wb') as f:
+    pickle.dump((train_datasets,test_datasets), f)
 print('datasets saved at {}'.format(filename))
