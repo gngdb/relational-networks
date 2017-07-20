@@ -17,21 +17,10 @@ def relation(input, g, f=None, embedding=None, max_pairwise=None):
     if input.is_cuda:
         i, j = i.cuda(), j.cuda()
     # Create pairwise matrix
-    qst = embedding
-    qst = torch.unsqueeze(qst, 1)
-    qst = qst.repeat(1,25,1)
-    pairs = torch.cat((torch.index_select(input, 1, i),
-                       torch.index_select(torch.cat((input,qst),2), 1, j)), 2)
-    # cast all pairs against each other
-    #x_i = torch.unsqueeze(input,1) # (64x1x25x26+11)
-    #x_i = x_i.repeat(1,25,1,1) # (64x25x25x26+11)
-    #x_j = torch.unsqueeze(input,2) # (64x25x1x26+11)
-    #x_j = x_j.repeat(1,1,25,1) # (64x25x25x26+11)
-    # concatenate all together
-    #pairs = torch.cat([x_i,x_j],3).view(b,o*o,2*c)
+    pairs = torch.cat((torch.index_select(input, 1, i), torch.index_select(input, 1, j)), 2)
     # Append embedding if provided
-    #if embedding is not None:
-    #    pairs = torch.cat((pairs, embedding.unsqueeze(1).expand(b, o ** 2, embedding.size(1))), 2)
+    if embedding is not None:
+        pairs = torch.cat((pairs, embedding.unsqueeze(1).expand(b, o ** 2, embedding.size(1))), 2)
     # Calculate new feature size
     c = pairs.size(2)
     # Pack into batches
@@ -123,7 +112,8 @@ class RN(nn.Module):
         x_flat = x.view(mb,n_channels,d).permute(0,2,1)
         # add coordinates
         x_flat = torch.cat([x_flat, self.coord_tensor],2)
-        return relation(x_flat, self.g, f=self.f, embedding=qst)
+        x_f = relation(x_flat, self.g, f=self.f, embedding=qst)
+        return F.log_softmax(x_f)
 
     def g(self, x_):
         x_ = self.g_fc1(x_)
