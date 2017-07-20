@@ -5,6 +5,38 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.autograd import Variable
 
+# Kai's implementation, copied from pytorch branch
+def relation(input, g, f=None, embedding=None, max_pairwise=None):
+    # Batch size, number of objects, feature size
+    b, o, c = input.size()
+    # Construct pairwise indices
+    i = Variable(torch.arange(0, o).long().repeat(o))
+    j = Variable(torch.arange(0, o).long().repeat(o, 1).t().contiguous().view(-1))
+    # Create pairwise matrix
+    pairs = torch.cat((torch.index_select(input, 1, i), torch.index_select(input, 1, j)), 2)
+    # Append embedding if provided
+    if embedding is not None:
+        pairs = torch.cat((pairs, embedding.unsqueeze(1).expand(b, o ** 2, embedding.size(1))), 2)
+    # Calculate new feature size
+    c = pairs.size(2)
+    # Pack into batches
+    pairs = pairs.view(b * o ** 2, c)
+    # Pass through g
+    if max_pairwise is None:
+        output = g(pairs)
+    else:
+        outputs = []
+        for batch in range(0, b * o ** 2, max_pairwise):
+            outputs.append(g(pairs[batch:batch + max_pairwise]))
+        output = torch.cat(outputs, 0)
+    # Unpack
+    output = output.view(b, o ** 2, output.size(1)).sum(1).squeeze(1)
+    # Pass through f if given
+    if f is not None:
+        output = f(output)
+    return output
+
+
 class RN(nn.Module):
 
     def __init__(self,args):
@@ -92,6 +124,16 @@ class RN(nn.Module):
         x_full = torch.cat([x_i,x_j],3) # (64x25x25x2*26+11)
         # reshape for passing through network
         x_ = x_full.view(mb*d*d*d*d,63)
+        x_ = self.g(x_)
+        # reshape again and sum
+        x_g = x_.view(mb,d*d*d*d,256)
+        x_g = x_g.sum(1).squeeze()
+        """f"""
+        x_f = self.f(x_g)
+
+        return F.log_softmax(x_f)
+
+    def g(self, x_):
         x_ = self.g_fc1(x_)
         x_ = F.relu(x_)
         x_ = self.g_fc2(x_)
@@ -100,19 +142,16 @@ class RN(nn.Module):
         x_ = F.relu(x_)
         x_ = self.g_fc4(x_)
         x_ = F.relu(x_)
-        # reshape again and sum
-        x_g = x_.view(mb,d*d*d*d,256)
-        x_g = x_g.sum(1).squeeze()
-        """f"""
-        x_f = self.f_fc1(x_g)
+        return x_
+
+    def f(self, x):
+        x_f = self.f_fc1(x)
         x_f = F.relu(x_f)
         x_f = self.f_fc2(x_f)
         x_f = F.relu(x_f)
         x_f = F.dropout(x_f)
         x_f = self.f_fc3(x_f)
-
-        return F.log_softmax(x_f)
-
+        return x_f
 
     def train_(self, input_img, input_qst, label):
         self.optimizer.zero_grad()
