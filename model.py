@@ -9,9 +9,13 @@ from torch.autograd import Variable
 def relation(input, g, f=None, embedding=None, max_pairwise=None):
     # Batch size, number of objects, feature size
     b, o, c = input.size()
+    # embedding is two dimensional
+    # either (b, <embedding size>) or (1, <embedding size>)
     # Construct pairwise indices
     i = Variable(torch.arange(0, o).long().repeat(o))
     j = Variable(torch.arange(0, o).long().repeat(o, 1).t().contiguous().view(-1))
+    if input.is_cuda:
+        i, j = i.cuda(), j.cuda()
     # Create pairwise matrix
     pairs = torch.cat((torch.index_select(input, 1, i), torch.index_select(input, 1, j)), 2)
     # Append embedding if provided
@@ -86,7 +90,6 @@ class RN(nn.Module):
     def cvt_coord(self, i):
         return [(i/5-2)/2., (i%5-2)/2.]
 
-
     def forward(self, img, qst):
         """convolution"""
         x = self.conv1(img)
@@ -102,18 +105,15 @@ class RN(nn.Module):
         x = F.relu(x)
         x = self.batchNorm4(x)
         ## x = (64 x 24 x 5 x 5)
-        """g"""
-        mb = x.size()[0]
-        n_channels = x.size()[1]
-        d = x.size()[2]
+        mb, n_channels, xdim, ydim = x.size()
+        d = xdim*ydim
+        x = x.view(mb, n_channels, d)
         # x_flat = (64 x 25 x 24)
-        x_flat = x.view(mb,n_channels,d*d).permute(0,2,1)
+        x_flat = x.view(mb,n_channels,d).permute(0,2,1)
         # add coordinates
         x_flat = torch.cat([x_flat, self.coord_tensor],2)
-        # add question everywhere
-        qst = torch.unsqueeze(qst, 1)
-        qst = qst.repeat(1,25,1)
-        qst = torch.unsqueeze(qst, 2)
+        return relation(x_flat, self.g, f=self.f, embedding=qst)
+
         # cast all pairs against each other
         x_i = torch.unsqueeze(x_flat,1) # (64x1x25x26+11)
         x_i = x_i.repeat(1,25,1,1) # (64x25x25x26+11)
@@ -123,10 +123,10 @@ class RN(nn.Module):
         # concatenate all together
         x_full = torch.cat([x_i,x_j],3) # (64x25x25x2*26+11)
         # reshape for passing through network
-        x_ = x_full.view(mb*d*d*d*d,63)
+        x_ = x_full.view(mb*d*d,63)
         x_ = self.g(x_)
         # reshape again and sum
-        x_g = x_.view(mb,d*d*d*d,256)
+        x_g = x_.view(mb,d*d,256)
         x_g = x_g.sum(1).squeeze()
         """f"""
         x_f = self.f(x_g)
